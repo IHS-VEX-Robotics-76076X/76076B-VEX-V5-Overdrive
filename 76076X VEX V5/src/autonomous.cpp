@@ -47,7 +47,7 @@ void blue_close_side() {
 // TODO: placeholder routine (drives backward for 1 second) - replace with the
 // actual blue-alliance, far-side autonomous once the game strategy is set.
 void blue_far_side() {
-    myRobot.drive_forward(100);
+    myRobot.drive_forward(-100);
     pros::delay(1000);
     myRobot.stop();
 }
