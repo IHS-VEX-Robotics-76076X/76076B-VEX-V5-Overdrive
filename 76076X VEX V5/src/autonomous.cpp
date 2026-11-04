@@ -1,7 +1,12 @@
 #include "main.h"
 #include "chassis.hpp"
+#include "config.hpp"
 
 extern Chassis myRobot;
+extern pros::MotorGroup cascade_motors;
+extern pros::Motor intake_motor;
+extern pros::adi::DigitalOut claw_piston;
+extern pros::adi::DigitalOut flip_piston; 
 
 // Override AWP (SC8): 7+ pins placed for your alliance on your own side of
 // the auton line, 3+ goals with 2+ each, neither robot touching the
@@ -14,9 +19,17 @@ extern Chassis myRobot;
 // TODO: placeholder routine (drives forward for 1 second) - replace with the
 // actual red-alliance, close-side autonomous once the game strategy is set.
 void red_close_side() {
-    myRobot.drive_forward(100);
-    pros::delay(1000);
-    myRobot.stop();
+    // myRobot.drive_to_point(x,y); // start with preload
+    // cascade_motors.move(x);
+    // myRobot.drive_to_point(x,y); 
+    // myRobot.drive_to_point(x,y); 
+    // cascade_motors.move(x);
+    // myRobot.drive_to_point(x,y); 
+    // myRobot.drive_to_point(x,y); 
+    // cascade_motors.move(x);
+    // myRobot.drive_to_point(x, y); // finish by matchload
+    
+    // Points earned: 30
 }
 
 void red_far_side() {
@@ -34,7 +47,7 @@ void blue_close_side() {
 // TODO: placeholder routine (drives backward for 1 second) - replace with the
 // actual blue-alliance, far-side autonomous once the game strategy is set.
 void blue_far_side() {
-    myRobot.drive_forward(-100);
+    myRobot.drive_forward(100);
     pros::delay(1000);
     myRobot.stop();
 }
