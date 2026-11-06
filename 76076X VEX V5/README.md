@@ -309,6 +309,65 @@ sites in `main.cpp`:
 - `DEFAULT_HEADING_KP` - heading-hold correction gain for `drive_distance`.
 - `DRIVE_MAX_ACCEL_PER_LOOP` - motion-profiling accel limit for `drive_distance`.
 
+## Controller
+
+Bindings live in `src/opcontrol.cpp`.
+
+| Input | Does | Type |
+|---|---|---|
+| **Left stick** up / down | Drive forward / backward | Analog |
+| **Right stick** left / right | Turn left / right | Analog |
+| **R1** | Cascade lift up | Hold |
+| **R2** | Cascade lift down | Hold |
+| **X** | Intake in | Hold |
+| **B** | Intake out (clears jams) | Hold |
+| **A** | Claw open / close | Toggle |
+| **Y** | Flip piston out / in | Toggle |
+
+- The lift holds its position wherever you let go - it doesn't sag. Holding
+  R1 and R2 together cancels out to no movement.
+- If X and B are both held, X wins and the intake runs in.
+- Both pistons start retracted. A and Y flip once per press, so holding the
+  button doesn't toggle it repeatedly.
+- The sticks have a deadband and an expo curve for fine control near center.
+  Speeding up is ramped (`OPCONTROL_SLEW_PER_LOOP`); stopping is instant.
+- Unused: L1, L2, the D-pad, left stick X and right stick Y.
+
+Driving is split arcade by default. `DEFAULT_DRIVE_MODE` in `config.hpp`
+switches it to single-stick arcade or tank.
+
+## Ports
+
+All ports are set in `include/config.hpp`. A negative port means the motor
+is mounted backwards and PROS reverses it.
+
+### Smart Ports
+
+| Port | Device | Cartridge | Config name |
+|:---:|---|---|---|
+| 1 | Left front drive (reversed) | Blue | `LEFT_DRIVE_PORTS` |
+| 2 | Left back drive (reversed) | Blue | `LEFT_DRIVE_PORTS` |
+| 3 | Right front drive | Blue | `RIGHT_DRIVE_PORTS` |
+| 4 | Right back drive | Blue | `RIGHT_DRIVE_PORTS` |
+| 5 | Cascade lift | Green | `CASCADE_MOTOR_PORTS` |
+| 6 | Cascade lift (reversed) | Green | `CASCADE_MOTOR_PORTS` |
+| 7 | Intake | Blue | `INTAKE_MOTOR_PORT` |
+| 11 | Inertial sensor (IMU) | - | `INERTIAL_SENSOR_PORT` |
+| 12 | Tracking wheel (rotation sensor) | - | `TRACKING_WHEEL_PORT` |
+
+Ports 11 and 12 are reserved, but neither sensor is fitted yet -
+`HAS_INERTIAL_SENSOR` and `HAS_TRACKING_WHEEL` are both `false`.
+
+### ADI (three-wire) ports
+
+| Port | Device | Config name |
+|:---:|---|---|
+| A | Claw grip solenoid | `CLAW_PNEUMATIC_PORT` |
+| B | Claw flip solenoid | `CLAW_FLIP_PNEUMATIC_PORT` |
+
+A and B are still placeholders. Nothing can detect a wrong ADI port, so if
+the solenoids are plugged in elsewhere the pistons silently never fire.
+
 ## On the LCD
 
 - **Left/right buttons** (during `competition_initialize`, i.e. before a

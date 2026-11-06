@@ -304,3 +304,33 @@ constexpr double DEFAULT_HEADING_KP = 1.0;
 // per 10ms loop (out of the -127..127 motor range), so the drivetrain ramps
 // up from a dead stop instead of slamming to full power and slipping.
 constexpr double DRIVE_MAX_ACCEL_PER_LOOP = 15.0;
+
+// ---------------------------------------------------------------------------
+// CASCADE LIFT LIMITS
+// ---------------------------------------------------------------------------
+//
+// Stops the lift driving past a bottom and top position. Values are motor
+// degrees, read from the first cascade motor (port 5).
+//
+// initialize() zeroes the lift encoders at startup, so 0 means "wherever the
+// lift was when the program started". START THE PROGRAM WITH THE LIFT ALL
+// THE WAY DOWN, or every limit below is shifted by however high it was.
+//
+// HOW TO SET THEM
+//   1. Leave CASCADE_LIMIT_ENABLED false and run the program.
+//   2. Brain line 4 shows the raw encoder values at startup, before zeroing.
+//      Brain line 5 shows the live lift position in driver control.
+//   3. Raise the lift to the highest safe point and read line 5. Put that in
+//      CASCADE_MAX_DEG. Lower it to the lowest safe point and put that
+//      reading in CASCADE_MIN_DEG (usually 0 or slightly above).
+//   4. Set CASCADE_LIMIT_ENABLED to true.
+//
+// If the reading goes DOWN as the lift goes up, the cascade port signs are
+// backwards - flip both signs in CASCADE_MOTOR_PORTS rather than entering
+// negative limits.
+constexpr bool CASCADE_LIMIT_ENABLED = false;
+constexpr double CASCADE_MIN_DEG = 0.0;
+constexpr double CASCADE_MAX_DEG = 0.0; // TODO: measure (see steps above)
+
+static_assert(!CASCADE_LIMIT_ENABLED || CASCADE_MIN_DEG < CASCADE_MAX_DEG,
+    "CASCADE_MIN_DEG must be below CASCADE_MAX_DEG - measure the top position before enabling the limit.");

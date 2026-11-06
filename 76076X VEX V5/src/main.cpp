@@ -133,7 +133,7 @@ void on_center_button() {
  */
 void initialize() {
 	pros::lcd::initialize();
-	pros::lcd::set_text(0, "76076X Overdrive");
+	pros::lcd::set_text(0, "76076X Override");
 
 	// With no competition switch or field control plugged in, the brain runs
 	// initialize() and then goes straight into opcontrol(). autonomous() and
@@ -168,6 +168,13 @@ void initialize() {
 	// to stop cleanly, so BRAKE is enough.
 	cascade_motors.set_brake_mode_all(E_MOTOR_BRAKE_HOLD);
 	intake_motor.set_brake_mode(E_MOTOR_BRAKE_BRAKE);
+
+	// Show where the lift encoders were at startup, then zero them so the
+	// CASCADE_MIN_DEG / CASCADE_MAX_DEG limits in config.hpp line up. The lift
+	// must be all the way down when the program starts.
+	pros::lcd::print(4, "Lift start: %.0f / %.0f deg",
+	                 cascade_motors.get_position(0), cascade_motors.get_position(1));
+	cascade_motors.tare_position_all();
 
 	// Hand the tracking wheel over, THEN start position tracking. Order
 	// matters: if start_odometry() runs first, odometry comes up using the
