@@ -328,9 +328,10 @@ constexpr double DRIVE_MAX_ACCEL_PER_LOOP = 15.0;
 // If the reading goes DOWN as the lift goes up, the cascade port signs are
 // backwards - flip both signs in CASCADE_MOTOR_PORTS rather than entering
 // negative limits.
-constexpr bool CASCADE_LIMIT_ENABLED = false;
+constexpr bool CASCADE_LIMIT_ENABLED = true; // enable limiters on cascade
 constexpr double CASCADE_MIN_DEG = 0.0;
-constexpr double CASCADE_MAX_DEG = 0.0; // TODO: measure (see steps above)
+constexpr double CASCADE_MAX_DEG = 10000.0; // placeholder value so cascade doesn't get stuck 
+// TODO: measure CASCADE_MAX_DEG (see steps above) 
 
 static_assert(!CASCADE_LIMIT_ENABLED || CASCADE_MIN_DEG < CASCADE_MAX_DEG,
     "CASCADE_MIN_DEG must be below CASCADE_MAX_DEG - measure the top position before enabling the limit.");
