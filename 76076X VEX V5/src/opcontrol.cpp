@@ -121,7 +121,18 @@ void opcontrol() {
         int cascadeSpeed = 0;
         if (master.get_digital(E_CONTROLLER_DIGITAL_R1)) cascadeSpeed += 127;
         if (master.get_digital(E_CONTROLLER_DIGITAL_R2)) cascadeSpeed -= 127;
-        cascade_motors.move(cascadeSpeed);        
+
+        // Live lift position on line 5, used to measure the limits in
+        // config.hpp. Once a limit is reached, only the opposite direction
+        // is allowed. A disconnected motor reads as infinity, which blocks
+        // raising but still allows lowering.
+        double liftDeg = cascade_motors.get_position();
+        pros::lcd::print(5, "Lift: %.0f deg", liftDeg);
+        if constexpr (CASCADE_LIMIT_ENABLED) {
+            if (cascadeSpeed > 0 && liftDeg >= CASCADE_MAX_DEG) cascadeSpeed = 0;
+            if (cascadeSpeed < 0 && liftDeg <= CASCADE_MIN_DEG) cascadeSpeed = 0;
+        }
+        cascade_motors.move(cascadeSpeed);
 
         // intake: X in / B out (reverse clears jams and fixes cup orientation
         // for SC3 - opaque vs transparent matters for yellow scoring).
