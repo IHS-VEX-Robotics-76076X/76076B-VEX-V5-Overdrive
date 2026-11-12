@@ -292,7 +292,7 @@ void run_auton_routine(AutonRoutine routine) {
  */
 void initialize() {
 	pros::lcd::initialize();
-	pros::lcd::set_text(0, "i am a fat gay cuffem - ant ");
+	pros::lcd::set_text(0, "76076X Overdrive");
 
 	// With no competition switch or field control plugged in, the brain runs
 	// initialize() and then goes straight into opcontrol(). autonomous() and
