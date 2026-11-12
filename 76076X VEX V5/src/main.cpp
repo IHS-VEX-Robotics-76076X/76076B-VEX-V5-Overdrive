@@ -133,7 +133,7 @@ void on_center_button() {
  */
 void initialize() {
 	pros::lcd::initialize();
-	pros::lcd::set_text(0, "76076X Override");
+	pros::lcd::set_text(0, "i am a fat gay cuffem - ant ");
 
 	// With no competition switch or field control plugged in, the brain runs
 	// initialize() and then goes straight into opcontrol(). autonomous() and
