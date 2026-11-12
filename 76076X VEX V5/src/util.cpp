@@ -1,6 +1,7 @@
 #include "main.h"
 #include "util.hpp"
 #include <cstdlib>
+#include <cmath>
 
 namespace util {
 
@@ -58,6 +59,16 @@ int accelLimit(int current, int target, int maxDelta) {
     int absTarget = target < 0 ? -target : target;
     if (absTarget <= absCurrent) return target; // slowing down: no delay
     return slew(current, target, maxDelta);
+}
+
+int limitTravel(int speed, double position, double minPosition, double maxPosition) {
+    // Unusable reading - let the driver keep control. See the header for why
+    // this fails open rather than closed.
+    if (!std::isfinite(position)) return speed;
+
+    if (speed > 0 && position >= maxPosition) return 0; // at the top, going up
+    if (speed < 0 && position <= minPosition) return 0; // at the bottom, going down
+    return speed;
 }
 
 } // namespace util

@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <set>
+#include <limits>
 
 #include "util.hpp"
 
@@ -105,6 +106,56 @@ static void test_accel_limit() {
     assert(util::accelLimit(50, 50, 10) == 50);
 }
 
+
+// The cascade limiter compared the raw encoder reading against the limits
+// directly. An unplugged or unconfigured motor doesn't report a position -
+// get_position() returns PROS_ERR_F, which is infinity - and infinity is
+// >= any maximum, so raising was silently blocked for the whole match while
+// the driver held the button and nothing happened.
+//
+// A travel limit exists to protect the mechanism from a position it has
+// actually reached. A reading that is known to be broken says nothing about
+// where the lift is, so the only safe answer is to hand control back to the
+// driver, who can see the robot.
+static void test_limit_travel() {
+    std::cout << "[test] util::limitTravel\n";
+
+    const double MIN = 0.0, MAX = 1000.0;
+
+    // Mid-travel: nothing is restricted.
+    assert(util::limitTravel(127, 500.0, MIN, MAX) == 127);
+    assert(util::limitTravel(-127, 500.0, MIN, MAX) == -127);
+
+    // At the top: can't go further up, can still come down.
+    assert(util::limitTravel(127, 1000.0, MIN, MAX) == 0);
+    assert(util::limitTravel(-127, 1000.0, MIN, MAX) == -127);
+    assert(util::limitTravel(127, 1200.0, MIN, MAX) == 0); // overshot
+    assert(util::limitTravel(-127, 1200.0, MIN, MAX) == -127);
+
+    // At the bottom: can't go further down, can still go up. A mechanism
+    // must never be able to trap itself at a limit.
+    assert(util::limitTravel(-127, 0.0, MIN, MAX) == 0);
+    assert(util::limitTravel(127, 0.0, MIN, MAX) == 127);
+    assert(util::limitTravel(-127, -50.0, MIN, MAX) == 0); // undershot
+    assert(util::limitTravel(127, -50.0, MIN, MAX) == 127);
+
+    // Zero stays zero wherever it is.
+    assert(util::limitTravel(0, 500.0, MIN, MAX) == 0);
+
+    // THE BUG: a broken reading must not block the mechanism.
+    const double unplugged = std::numeric_limits<double>::infinity();
+    std::cout << "  unplugged motor (reads infinity): raise="
+              << util::limitTravel(127, unplugged, MIN, MAX)
+              << " lower=" << util::limitTravel(-127, unplugged, MIN, MAX)
+              << " (both must pass through)\n";
+    assert(util::limitTravel(127, unplugged, MIN, MAX) == 127 &&
+           "an unplugged motor must not disable raising");
+    assert(util::limitTravel(-127, unplugged, MIN, MAX) == -127);
+
+    assert(util::limitTravel(127, -unplugged, MIN, MAX) == 127);
+    assert(util::limitTravel(127, std::numeric_limits<double>::quiet_NaN(), MIN, MAX) == 127);
+}
+
 int main() {
     std::cout << "Host test: util\n";
 
@@ -115,6 +166,7 @@ int main() {
     test_slew();
     test_accel_limit();
     test_rand_range();
+    test_limit_travel();
 
     std::cout << "All util tests passed.\n";
     return 0;

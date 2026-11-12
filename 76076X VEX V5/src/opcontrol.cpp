@@ -123,14 +123,19 @@ void opcontrol() {
         if (master.get_digital(E_CONTROLLER_DIGITAL_R2)) cascadeSpeed -= 127;
 
         // Live lift position on line 5, used to measure the limits in
-        // config.hpp. Once a limit is reached, only the opposite direction
-        // is allowed. A disconnected motor reads as infinity, which blocks
-        // raising but still allows lowering.
+        // config.hpp.
         double liftDeg = cascade_motors.get_position();
         pros::lcd::print(5, "Lift: %.0f deg", liftDeg);
+
         if constexpr (CASCADE_LIMIT_ENABLED) {
-            if (cascadeSpeed > 0 && liftDeg >= CASCADE_MAX_DEG) cascadeSpeed = 0;
-            if (cascadeSpeed < 0 && liftDeg <= CASCADE_MIN_DEG) cascadeSpeed = 0;
+            // limitTravel fails open: if liftDeg isn't a finite number the
+            // speed passes straight through. The previous version compared
+            // directly, so a motor reporting PROS_ERR_F (infinity) - which
+            // is what an unplugged or unconfigured motor returns - made
+            // `liftDeg >= CASCADE_MAX_DEG` true and silently blocked raising
+            // for the rest of the match.
+            cascadeSpeed = util::limitTravel(cascadeSpeed, liftDeg,
+                                             CASCADE_MIN_DEG, CASCADE_MAX_DEG);
         }
         cascade_motors.move(cascadeSpeed);
 
