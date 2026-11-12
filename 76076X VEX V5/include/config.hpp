@@ -328,10 +328,15 @@ constexpr double DRIVE_MAX_ACCEL_PER_LOOP = 15.0;
 // If the reading goes DOWN as the lift goes up, the cascade port signs are
 // backwards - flip both signs in CASCADE_MOTOR_PORTS rather than entering
 // negative limits.
-constexpr bool CASCADE_LIMIT_ENABLED = true; // enable limiters on cascade
+// OFF until the limits are actually measured. CASCADE_MAX_DEG below is a
+// made-up number, and a travel limit built on a guess either does nothing
+// (if the guess is too high) or stops the lift short of where it needs to
+// go - and either way you can't tell which without measuring.
+//
+// Follow the four steps above, then set this to true.
+constexpr bool CASCADE_LIMIT_ENABLED = false;
 constexpr double CASCADE_MIN_DEG = 0.0;
-constexpr double CASCADE_MAX_DEG = 10000.0; // placeholder value so cascade doesn't get stuck 
-// TODO: measure CASCADE_MAX_DEG (see steps above) 
+constexpr double CASCADE_MAX_DEG = 10000.0; // TODO: placeholder - measure it (see steps above)
 
 static_assert(!CASCADE_LIMIT_ENABLED || CASCADE_MIN_DEG < CASCADE_MAX_DEG,
     "CASCADE_MIN_DEG must be below CASCADE_MAX_DEG - measure the top position before enabling the limit.");
