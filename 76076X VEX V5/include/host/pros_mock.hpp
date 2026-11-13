@@ -23,6 +23,7 @@
 #include <functional>
 #include <string>
 #include <iostream>
+#include <cstdio>
 #include <map>
 #include <cstdint>
 #include <utility>
@@ -111,7 +112,18 @@ namespace lcd {
     inline void register_btn0_cb(std::function<void()> cb) { /* left */ }
     inline void register_btn1_cb(std::function<void()> cb) { /* centre */ }
     inline void register_btn2_cb(std::function<void()> cb) { /* right */ }
-    inline void print(int row, const char *fmt, int a, int b, int c) { std::cout << "LCD:" << row << " " << a << " " << b << " " << c << "\n"; }
+    // Variadic, like the real lcd::print. It used to take exactly three
+    // ints, so any call with a different number or type of argument failed
+    // on host while compiling fine on device.
+    template <typename... Args>
+    inline void print(int row, const char *fmt, Args... args) {
+        char buf[256];
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+        std::snprintf(buf, sizeof(buf), fmt, args...);
+#pragma GCC diagnostic pop
+        std::cout << "LCD:" << row << " " << buf << "\n";
+    }
     inline int read_buttons() { return 0; }
 }
 
@@ -237,6 +249,13 @@ class MotorGroup {
         void move_velocity(int v) const { move(v); }
         void tare_position_all() const {
             for (int p : ports_) host_set_motor_position(p, 0.0);
+        }
+        // One motor's position, defaulting to the first - matches the real
+        // AbstractMotor::get_position(index). Returns PROS_ERR_F for an
+        // out-of-range index, as the real one does for a bad port.
+        double get_position(std::uint8_t index = 0) const {
+            if (index >= ports_.size()) return PROS_ERR_F;
+            return signs_[index] * host_get_motor_position(ports_[index]);
         }
         std::vector<double> get_position_all() const {
             std::vector<double> out;

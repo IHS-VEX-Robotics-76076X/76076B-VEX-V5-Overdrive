@@ -4,7 +4,7 @@
 
 extern Chassis myRobot;
 extern pros::MotorGroup cascade_motors;
-extern pros::Motor intake_motor;
+extern pros::MotorGroup intake_motors;
 extern pros::adi::DigitalOut claw_piston;
 extern pros::adi::DigitalOut flip_piston; 
 
