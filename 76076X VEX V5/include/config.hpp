@@ -346,5 +346,17 @@ constexpr bool CASCADE_LIMIT_ENABLED = false;
 constexpr double CASCADE_MIN_DEG = 0.0;
 constexpr double CASCADE_MAX_DEG = 10000.0; // TODO: placeholder - measure it (see steps above)
 
+// How hard the lift servos back to the top once it has hit the limit, in
+// RPM. Only used while the driver is still asking to go up at the top.
+//
+// Cutting power at the limit is not enough on this lift: a stopped motor
+// relies on brake mode to resist gravity, and a cascade is heavy enough to
+// drag it back down. Holding the position actively keeps it where it is.
+//
+// Low on purpose. This only has to resist gravity over a few degrees of
+// sag, not drive the lift anywhere, and a high value turns a small sag into
+// a jolt back upward.
+constexpr int CASCADE_HOLD_RPM = 50;
+
 static_assert(!CASCADE_LIMIT_ENABLED || CASCADE_MIN_DEG < CASCADE_MAX_DEG,
     "CASCADE_MIN_DEG must be below CASCADE_MAX_DEG - measure the top position before enabling the limit.");
