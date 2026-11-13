@@ -15,7 +15,7 @@
 // These all live in main.cpp - this is how we reach them from here.
 extern Chassis myRobot;
 extern pros::MotorGroup cascade_motors;
-extern pros::Motor intake_motor;
+extern pros::MotorGroup intake_motors;
 extern pros::adi::DigitalOut claw_piston;
 extern pros::adi::DigitalOut flip_piston;
 
@@ -138,7 +138,7 @@ void opcontrol() {
         int intakeSpeed = 0;
         if (master.get_digital(E_CONTROLLER_DIGITAL_X)) intakeSpeed = 127;
         else if (master.get_digital(E_CONTROLLER_DIGITAL_B)) intakeSpeed = -127;
-        intake_motor.move(intakeSpeed);
+        intake_motors.move(intakeSpeed); // both motors, same direction
 
         // Draw the menu and run anything it asked for. After the drive and
         // mechanism commands, so a test routine starts from a stopped robot

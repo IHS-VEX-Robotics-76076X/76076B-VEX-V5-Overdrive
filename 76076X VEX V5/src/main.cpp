@@ -52,8 +52,10 @@ pros::MotorGroup cascade_motors(
     std::vector<std::int8_t>(CASCADE_MOTOR_PORTS.begin(), CASCADE_MOTOR_PORTS.end()),
     CASCADE_MOTOR_GEARSET);
 
-// Intake.
-pros::Motor intake_motor(INTAKE_MOTOR_PORT, INTAKE_MOTOR_GEARSET);
+// Intake: two motors driven as one group so they can never get out of step.
+pros::MotorGroup intake_motors(
+    std::vector<std::int8_t>(INTAKE_MOTOR_PORTS.begin(), INTAKE_MOTOR_PORTS.end()),
+    INTAKE_MOTOR_GEARSET);
 
 // Pneumatics. Not motors - each is a solenoid on an ADI (three-wire) port,
 // started retracted (false/LOW).
@@ -249,8 +251,7 @@ void render_menu() {
 			pros::lcd::set_text(1, port_pair_status("Drive L", LEFT_DRIVE_PORTS[0], LEFT_DRIVE_PORTS[1]));
 			pros::lcd::set_text(2, port_pair_status("Drive R", RIGHT_DRIVE_PORTS[0], RIGHT_DRIVE_PORTS[1]));
 			pros::lcd::set_text(3, port_pair_status("Cascade", CASCADE_MOTOR_PORTS[0], CASCADE_MOTOR_PORTS[1]));
-			pros::lcd::set_text(4, std::string("Intake ") + std::to_string(INTAKE_MOTOR_PORT)
-			                       + (smart_port_connected(INTAKE_MOTOR_PORT) ? ": OK" : ": --"));
+			pros::lcd::set_text(4, port_pair_status("Intake ", INTAKE_MOTOR_PORTS[0], INTAKE_MOTOR_PORTS[1]));
 			pros::lcd::set_text(5, std::string("IMU ") + std::to_string(INERTIAL_SENSOR_PORT)
 			                       + (inertial_sensor.is_installed() ? ": OK" : ": --")
 			                       + "  Track " + std::to_string(TRACKING_WHEEL_PORT)
@@ -327,7 +328,7 @@ void initialize() {
 	// instead of sinking. The intake has nothing to hold up and just needs
 	// to stop cleanly, so BRAKE is enough.
 	cascade_motors.set_brake_mode_all(E_MOTOR_BRAKE_HOLD);
-	intake_motor.set_brake_mode(E_MOTOR_BRAKE_BRAKE);
+	intake_motors.set_brake_mode_all(E_MOTOR_BRAKE_BRAKE);
 
 	// Show where the lift encoders were at startup, then zero them so the
 	// CASCADE_MIN_DEG / CASCADE_MAX_DEG limits in config.hpp line up. The lift

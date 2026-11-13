@@ -797,6 +797,41 @@ static void test_drive_stall_exits_early() {
 // pattern in config.hpp - left negative, right positive - so that a
 // well-meaning "cleanup" that strips the minus signs, or a copy-paste that
 // flips the wrong side, fails on the laptop instead of on the field.
+
+// The intake is two motors that must pull the same way. Both ports are
+// positive, unlike the cascade's {5, -6} - negating one would make them
+// fight and stall instead of intaking.
+//
+// This pins the sign pattern and the count in config.hpp, so adding a minus
+// sign or dropping a motor fails here rather than on the robot.
+static void test_intake_is_two_motors_pulling_together() {
+    std::cout << "[test] intake: two motors, both spinning the same way\n";
+
+    std::cout << "  config.hpp: intake {" << (int)INTAKE_MOTOR_PORTS[0]
+              << "," << (int)INTAKE_MOTOR_PORTS[1] << "}\n";
+    assert(INTAKE_MOTOR_PORTS.size() == 2 && "intake should be two motors");
+    for (auto p : INTAKE_MOTOR_PORTS) {
+        assert(p > 0 && "both intake ports positive - a negated one would fight the other");
+    }
+
+    // Drive the real configured ports through a group and check both motors
+    // get the same voltage, in the same direction.
+    pros::MotorGroup intake(
+        std::vector<std::int8_t>(INTAKE_MOTOR_PORTS.begin(), INTAKE_MOTOR_PORTS.end()));
+
+    intake.move(127); // X - pull in
+    int a = pros::host_get_motor_voltage(INTAKE_MOTOR_PORTS[0]);
+    int b = pros::host_get_motor_voltage(INTAKE_MOTOR_PORTS[1]);
+    std::cout << "  intake in:  " << a << ", " << b << " (equal and positive)\n";
+    assert(a == 127 && b == 127);
+
+    intake.move(-127); // B - spit out
+    a = pros::host_get_motor_voltage(INTAKE_MOTOR_PORTS[0]);
+    b = pros::host_get_motor_voltage(INTAKE_MOTOR_PORTS[1]);
+    std::cout << "  intake out: " << a << ", " << b << " (equal and negative)\n";
+    assert(a == -127 && b == -127);
+}
+
 static void test_drive_ports_match_robot_wiring() {
     std::cout << "[test] drive ports: left side reversed, right side not (mirrored drivetrain)\n";
 
@@ -916,6 +951,7 @@ int main() {
     test_turn_functions_stop_motors_even_without_an_imu();
     test_drive_and_turn_timeout_when_gains_never_converge();
     test_odometry_tracks_straight_line_drive();
+    test_intake_is_two_motors_pulling_together();
     test_drive_ports_match_robot_wiring();
     test_negative_port_reverses_voltage_and_encoder();
     test_configured_drive_mode_steers_correctly();
