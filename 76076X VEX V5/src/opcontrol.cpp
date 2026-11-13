@@ -21,6 +21,7 @@ extern pros::adi::DigitalOut flip_piston;
 
 // Menu plumbing, defined in main.cpp.
 void menu_service();                 // reads the buttons, then redraws
+void set_lift_readout(double degrees); // live lift position for the home screen
 void render_menu();                  // redraw only (used mid-routine)
 MenuState menu_snapshot();           // consistent read of the menu state
 void menu_clear_test_request();      // call once a requested route has run
@@ -116,10 +117,12 @@ void opcontrol() {
         if (master.get_digital(E_CONTROLLER_DIGITAL_R1)) cascadeSpeed += 127;
         if (master.get_digital(E_CONTROLLER_DIGITAL_R2)) cascadeSpeed -= 127;
 
-        // Live lift position on line 5, used to measure the limits in
-        // config.hpp.
+        // Live lift position, for measuring the limits in config.hpp. Handed
+        // to the menu to draw rather than printed here: the home screen also
+        // owns line 5, so writing it directly meant the two fought over the
+        // same line every loop.
         double liftDeg = cascade_motors.get_position();
-        pros::lcd::print(5, "Lift: %.0f deg", liftDeg);
+        set_lift_readout(liftDeg);
 
         if constexpr (CASCADE_LIMIT_ENABLED) {
             // limitTravel fails open: if liftDeg isn't a finite number the
