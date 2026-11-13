@@ -7,6 +7,7 @@
 #include <vector>
 #include <atomic>
 #include <string>
+#include <cstdio>
 
 void red_close_side();
 void red_far_side();
@@ -192,6 +193,37 @@ std::string port_pair_status(const char* label, std::int8_t a, std::int8_t b) {
 // task is live - opcontrol while driving, competition_initialize before a
 // match. Keeping the poll and the draw together is what guarantees a press
 // is always reflected on screen the same tick it is read.
+// Writes a screen line only when its text has actually changed.
+//
+// render_menu() redraws all eight lines every pass, and opcontrol calls it
+// every 20ms. Sent straight to the screen that is ~450 LLEMU updates a
+// second, each one touching an LVGL label and queuing a redraw. That
+// saturated the display task badly enough to stall the opcontrol loop
+// itself, which reads the controller - so the whole robot stopped
+// responding to the sticks.
+//
+// Caching makes the steady state cost nothing: an unchanged screen issues
+// no writes at all, and only the lines whose text really moved get sent.
+static void lcd_line(int line, const std::string &text) {
+    static std::string cache[8];
+    static bool written[8] = {};
+
+    if (line < 0 || line >= 8) return;
+    if (written[line] && cache[line] == text) return;
+
+    cache[line] = text;
+    written[line] = true;
+    pros::lcd::set_text(line, text);
+}
+
+// Live cascade position, published by opcontrol and shown on the home
+// screen. It used to be printed straight to line 5 from opcontrol, while
+// render_menu() wrote its own line 5 - so the two fought every single loop
+// and the line flickered between them.
+static std::atomic<double> lift_readout_deg{0.0};
+
+void set_lift_readout(double degrees) { lift_readout_deg = degrees; }
+
 void render_menu();
 
 void menu_service() {
@@ -204,55 +236,61 @@ void render_menu() {
 
 	switch (state.screen) {
 		case Screen::HOME: {
-			pros::lcd::set_text(0, "76076X Overdrive");
-			pros::lcd::set_text(1, std::string("Match auton: ") + auton_name(state.selected));
-			pros::lcd::set_text(2, AUTON_ENABLED ? "Auton: ENABLED"
+			lcd_line(0, "76076X Overdrive");
+			lcd_line(1, std::string("Match auton: ") + auton_name(state.selected));
+			lcd_line(2, AUTON_ENABLED ? "Auton: ENABLED"
 			                                     : "Auton: OFF (config.hpp)");
-			pros::lcd::set_text(3, "");
-			pros::lcd::set_text(4, std::string("Battery: ")
+			lcd_line(3, "");
+			lcd_line(4, std::string("Battery: ")
 			                       + std::to_string(static_cast<int>(pros::battery::get_capacity())) + "%");
-			pros::lcd::set_text(5, "");
-			pros::lcd::set_text(6, "L=pick auton  M=test");
-			pros::lcd::set_text(7, "R=port check");
+			{
+				// Rounded to a whole degree so the text only changes when
+				// the lift genuinely moves, rather than every tick.
+				char lift[32];
+				std::snprintf(lift, sizeof(lift), "Lift: %.0f deg", lift_readout_deg.load());
+				lcd_line(5, lift);
+			}
+			lcd_line(6, "L=pick auton  M=test");
+			lcd_line(7, "R=port check");
 			break;
 		}
 
 		case Screen::AUTON_SELECT: {
-			pros::lcd::set_text(0, "PICK MATCH AUTON");
-			pros::lcd::set_text(1, "");
-			pros::lcd::set_text(2, std::string(">> ") + auton_name(state.selected));
-			pros::lcd::set_text(3, "");
-			pros::lcd::set_text(4, AUTON_ENABLED ? "" : "NOTE: auton is OFF");
-			pros::lcd::set_text(5, "");
-			pros::lcd::set_text(6, "L=next  M=confirm");
-			pros::lcd::set_text(7, "R=cancel");
+			lcd_line(0, "PICK MATCH AUTON");
+			lcd_line(1, "");
+			lcd_line(2, std::string(">> ") + auton_name(state.selected));
+			lcd_line(3, "");
+			lcd_line(4, AUTON_ENABLED ? "" : "NOTE: auton is OFF");
+			lcd_line(5, "");
+			lcd_line(6, "L=next  M=confirm");
+			lcd_line(7, "R=cancel");
 			break;
 		}
 
 		case Screen::TEST_MENU: {
-			pros::lcd::set_text(0, "TEST AUTON");
-			pros::lcd::set_text(1, "");
-			pros::lcd::set_text(2, std::string(">> ") + auton_name(state.selected));
+			lcd_line(0, "TEST AUTON");
+			lcd_line(1, "");
+			lcd_line(2, std::string(">> ") + auton_name(state.selected));
 			// Flagged while the routine is actually driving, so nobody
 			// assumes the screen has frozen - the robot is moving and the
 			// sticks are ignored until it finishes.
-			pros::lcd::set_text(3, state.runTestNow ? "RUNNING - sticks off" : "");
-			pros::lcd::set_text(4, "");
-			pros::lcd::set_text(5, "");
-			pros::lcd::set_text(6, "L=next  M=RUN NOW");
-			pros::lcd::set_text(7, "R=back to driving");
+			lcd_line(3, state.runTestNow ? "RUNNING - sticks off" : "");
+			lcd_line(4, "");
+			lcd_line(5, "");
+			lcd_line(6, "L=next  M=RUN NOW");
+			lcd_line(7, "R=back to driving");
 			break;
 		}
 
 		case Screen::STATUS: {
 			// What is actually responding on each port right now. Unplug a
 			// motor and its number flips to "--" within a loop.
-			pros::lcd::set_text(0, "PORT CHECK");
-			pros::lcd::set_text(1, port_pair_status("Drive L", LEFT_DRIVE_PORTS[0], LEFT_DRIVE_PORTS[1]));
-			pros::lcd::set_text(2, port_pair_status("Drive R", RIGHT_DRIVE_PORTS[0], RIGHT_DRIVE_PORTS[1]));
-			pros::lcd::set_text(3, port_pair_status("Cascade", CASCADE_MOTOR_PORTS[0], CASCADE_MOTOR_PORTS[1]));
-			pros::lcd::set_text(4, port_pair_status("Intake ", INTAKE_MOTOR_PORTS[0], INTAKE_MOTOR_PORTS[1]));
-			pros::lcd::set_text(5, std::string("IMU ") + std::to_string(INERTIAL_SENSOR_PORT)
+			lcd_line(0, "PORT CHECK");
+			lcd_line(1, port_pair_status("Drive L", LEFT_DRIVE_PORTS[0], LEFT_DRIVE_PORTS[1]));
+			lcd_line(2, port_pair_status("Drive R", RIGHT_DRIVE_PORTS[0], RIGHT_DRIVE_PORTS[1]));
+			lcd_line(3, port_pair_status("Cascade", CASCADE_MOTOR_PORTS[0], CASCADE_MOTOR_PORTS[1]));
+			lcd_line(4, port_pair_status("Intake ", INTAKE_MOTOR_PORTS[0], INTAKE_MOTOR_PORTS[1]));
+			lcd_line(5, std::string("IMU ") + std::to_string(INERTIAL_SENSOR_PORT)
 			                       + (inertial_sensor.is_installed() ? ": OK" : ": --")
 			                       + "  Track " + std::to_string(TRACKING_WHEEL_PORT)
 			                       + (tracking_wheel.is_installed() ? ": OK" : ": --"));
@@ -260,8 +298,8 @@ void render_menu() {
 			// there is genuinely nothing to query - a solenoid that is
 			// unplugged looks identical to one sitting there doing nothing.
 			// Saying so beats inventing a reading that would always read OK.
-			pros::lcd::set_text(6, "Pneumatics: can't detect");
-			pros::lcd::set_text(7, "any button = back");
+			lcd_line(6, "Pneumatics: can't detect");
+			lcd_line(7, "any button = back");
 			break;
 		}
 	}
@@ -293,7 +331,7 @@ void run_auton_routine(AutonRoutine routine) {
  */
 void initialize() {
 	pros::lcd::initialize();
-	pros::lcd::set_text(0, "76076X Overdrive");
+	lcd_line(0, "76076X Overdrive");
 
 	// With no competition switch or field control plugged in, the brain runs
 	// initialize() and then goes straight into opcontrol(). autonomous() and
@@ -305,19 +343,19 @@ void initialize() {
 	// calibrate when both agree, so a loose cable at boot can't stall startup
 	// for 3 seconds waiting on a sensor that isn't answering.
 	if (HAS_INERTIAL_SENSOR && inertial_sensor.is_installed()) {
-		pros::lcd::set_text(1, "Calibrating IMU (~2s)...");
+		lcd_line(1, "Calibrating IMU (~2s)...");
 
 		// Blocks until calibration finishes (3s timeout). The IMU's
 		// get_rotation() is meaningless until then, and turning plus position
 		// tracking both read it, so it's worth waiting for.
 		inertial_sensor.reset(true);
-		pros::lcd::set_text(1, "READY - driver control");
+		lcd_line(1, "READY - driver control");
 	} else {
 		// No IMU - either not fitted yet (config.hpp) or not plugged in. Skip
 		// calibration rather than stalling on it. Driving still works.
 		// Turning and position tracking do not, and they no-op safely rather
 		// than misbehaving.
-		pros::lcd::set_text(1, "READY - no IMU, drive only");
+		lcd_line(1, "READY - no IMU, drive only");
 	}
 
 	// No register_btnX_cb() calls here on purpose - the buttons are polled
@@ -354,7 +392,7 @@ void initialize() {
 	// Report the auton state here too, not just in competition_initialize().
 	// That function only runs when field control is attached, so on a bare
 	// brain this is the only place it would ever get shown.
-	pros::lcd::set_text(3, AUTON_ENABLED ? "Auton: ENABLED" : "Auton: DISABLED (config.hpp)");
+	lcd_line(3, AUTON_ENABLED ? "Auton: ENABLED" : "Auton: DISABLED (config.hpp)");
 
 	util::fun(); // seeds the random number generator
 }
@@ -417,7 +455,7 @@ void autonomous() {
 	// before autonomous started, it gets shut off here.
 	if (!AUTON_ENABLED) {
 		myRobot.stop();
-		pros::lcd::set_text(3, "Auton: DISABLED (config.hpp)");
+		lcd_line(3, "Auton: DISABLED (config.hpp)");
 		return;
 	}
 
