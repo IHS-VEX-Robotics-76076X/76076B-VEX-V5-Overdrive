@@ -247,6 +247,17 @@ class MotorGroup {
             }
         }
         void move_velocity(int v) const { move(v); }
+        // Servos to an absolute encoder position and holds it there. The
+        // mock has no motor dynamics, so it simply snaps to the target -
+        // enough for tests to confirm the lift is commanded to hold at the
+        // limit rather than being cut to zero power.
+        std::int32_t move_absolute(double position, std::int32_t velocity) const {
+            for (std::size_t i = 0; i < ports_.size(); i++) {
+                host_set_motor_position(ports_[i], signs_[i] * position);
+                host_set_motor_voltage(ports_[i], signs_[i] * velocity);
+            }
+            return 1;
+        }
         void tare_position_all() const {
             for (int p : ports_) host_set_motor_position(p, 0.0);
         }

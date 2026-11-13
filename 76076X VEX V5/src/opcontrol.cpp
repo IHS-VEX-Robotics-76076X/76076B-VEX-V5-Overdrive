@@ -131,10 +131,30 @@ void opcontrol() {
             // is what an unplugged or unconfigured motor returns - made
             // `liftDeg >= CASCADE_MAX_DEG` true and silently blocked raising
             // for the rest of the match.
-            cascadeSpeed = util::limitTravel(cascadeSpeed, liftDeg,
-                                             CASCADE_MIN_DEG, CASCADE_MAX_DEG);
+            int allowed = util::limitTravel(cascadeSpeed, liftDeg,
+                                            CASCADE_MIN_DEG, CASCADE_MAX_DEG);
+
+            if (allowed == 0 && cascadeSpeed > 0) {
+                // At the top with the driver still asking for more. Hold the
+                // height rather than cutting power.
+                //
+                // Cutting to move(0) left the lift relying on brake mode to
+                // resist gravity, and a cascade is heavy enough to drag
+                // itself back down - so reaching the top dropped it to the
+                // bottom. move_absolute servos to CASCADE_MAX_DEG and keeps
+                // it there, which also walks the lift back up the few
+                // degrees it sags rather than letting the sag accumulate.
+                //
+                // Releasing R1, or pressing R2, falls through to the move()
+                // below - a voltage command cancels the position move, so
+                // the driver always gets control straight back.
+                cascade_motors.move_absolute(CASCADE_MAX_DEG, CASCADE_HOLD_RPM);
+            } else {
+                cascade_motors.move(allowed);
+            }
+        } else {
+            cascade_motors.move(cascadeSpeed);
         }
-        cascade_motors.move(cascadeSpeed);
 
         // intake: X in / B out (reverse clears jams and fixes cup orientation
         // for SC3 - opaque vs transparent matters for yellow scoring).
