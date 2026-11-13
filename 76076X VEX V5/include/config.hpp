@@ -184,14 +184,15 @@ constexpr std::uint8_t CLAW_FLIP_PNEUMATIC_PORT = 'B';
 
 // Intake: 2 motors driven as one group so they always match.
 //
-// BOTH PORTS POSITIVE, unlike the cascade. Neither is negated, so the same
-// command spins both the same way - which is what keeps them pulling in the
-// same direction as the single motor they replaced.
+// Port 8 is NEGATED because that motor is mounted facing the opposite way
+// from the one on port 7. Measured on the robot: with both positive, port 8
+// spun the wrong way and the two fought each other.
 //
-// If the two end up fighting each other (the intake stalls or grinds rather
-// than pulling), they are mounted facing opposite ways: negate ONE of them
-// here, the same as the cascade's {5, -6}.
-constexpr std::array<std::int8_t, 2> INTAKE_MOTOR_PORTS = {7, 8};
+// Negating the port flips the voltage PROS sends it, so one command makes
+// both motors pull the same direction physically. It covers both controller
+// inputs at once - X and B - because the flip is applied to whatever voltage
+// is sent, not to one direction of travel.
+constexpr std::array<std::int8_t, 2> INTAKE_MOTOR_PORTS = {7, -8};
 
 // ---------------------------------------------------------------------------
 // WHICH SENSORS ARE ACTUALLY INSTALLED

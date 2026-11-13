@@ -798,38 +798,50 @@ static void test_drive_stall_exits_early() {
 // well-meaning "cleanup" that strips the minus signs, or a copy-paste that
 // flips the wrong side, fails on the laptop instead of on the field.
 
-// The intake is two motors that must pull the same way. Both ports are
-// positive, unlike the cascade's {5, -6} - negating one would make them
-// fight and stall instead of intaking.
+// The intake is two motors that must pull the same way. The one on port 8
+// is mounted facing the opposite direction from the one on port 7, so its
+// port is negated - with both positive it spun the wrong way and the two
+// fought each other.
 //
-// This pins the sign pattern and the count in config.hpp, so adding a minus
-// sign or dropping a motor fails here rather than on the robot.
-static void test_intake_is_two_motors_pulling_together() {
-    std::cout << "[test] intake: two motors, both spinning the same way\n";
+// Checks physical rotation, not the raw sign: a reversed motor is SUPPOSED
+// to receive the opposite voltage. Asserting the voltages match would
+// enforce exactly the broken behaviour this is here to prevent.
+static void test_intake_motors_pull_the_same_way() {
+    std::cout << "[test] intake: both motors pull the same way\n";
 
     std::cout << "  config.hpp: intake {" << (int)INTAKE_MOTOR_PORTS[0]
               << "," << (int)INTAKE_MOTOR_PORTS[1] << "}\n";
     assert(INTAKE_MOTOR_PORTS.size() == 2 && "intake should be two motors");
-    for (auto p : INTAKE_MOTOR_PORTS) {
-        assert(p > 0 && "both intake ports positive - a negated one would fight the other");
-    }
 
-    // Drive the real configured ports through a group and check both motors
-    // get the same voltage, in the same direction.
+    // The physics of this robot: the port 8 motor faces the other way, so a
+    // positive voltage on it turns the intake backwards.
+    auto roller_direction = [](int absPort, int physicalVoltage) {
+        bool mountedBackwards = (absPort == 8);
+        return mountedBackwards ? -physicalVoltage : physicalVoltage;
+    };
+
     pros::MotorGroup intake(
         std::vector<std::int8_t>(INTAKE_MOTOR_PORTS.begin(), INTAKE_MOTOR_PORTS.end()));
 
-    intake.move(127); // X - pull in
-    int a = pros::host_get_motor_voltage(INTAKE_MOTOR_PORTS[0]);
-    int b = pros::host_get_motor_voltage(INTAKE_MOTOR_PORTS[1]);
-    std::cout << "  intake in:  " << a << ", " << b << " (equal and positive)\n";
-    assert(a == 127 && b == 127);
+    // X - pull in. Both rollers must turn the intaking direction.
+    intake.move(127);
+    for (auto p : INTAKE_MOTOR_PORTS) {
+        int absPort = p < 0 ? -p : p;
+        int roller = roller_direction(absPort, pros::host_get_motor_voltage(absPort));
+        std::cout << "  X (in):  port " << (int)p << " -> roller "
+                  << (roller > 0 ? "IN" : "OUT") << "\n";
+        assert(roller > 0 && "both rollers must pull in together");
+    }
 
-    intake.move(-127); // B - spit out
-    a = pros::host_get_motor_voltage(INTAKE_MOTOR_PORTS[0]);
-    b = pros::host_get_motor_voltage(INTAKE_MOTOR_PORTS[1]);
-    std::cout << "  intake out: " << a << ", " << b << " (equal and negative)\n";
-    assert(a == -127 && b == -127);
+    // B - spit out. Both must reverse together, not just one.
+    intake.move(-127);
+    for (auto p : INTAKE_MOTOR_PORTS) {
+        int absPort = p < 0 ? -p : p;
+        int roller = roller_direction(absPort, pros::host_get_motor_voltage(absPort));
+        std::cout << "  B (out): port " << (int)p << " -> roller "
+                  << (roller > 0 ? "IN" : "OUT") << "\n";
+        assert(roller < 0 && "both rollers must reverse together");
+    }
 }
 
 static void test_drive_ports_match_robot_wiring() {
@@ -951,7 +963,7 @@ int main() {
     test_turn_functions_stop_motors_even_without_an_imu();
     test_drive_and_turn_timeout_when_gains_never_converge();
     test_odometry_tracks_straight_line_drive();
-    test_intake_is_two_motors_pulling_together();
+    test_intake_motors_pull_the_same_way();
     test_drive_ports_match_robot_wiring();
     test_negative_port_reverses_voltage_and_encoder();
     test_configured_drive_mode_steers_correctly();
