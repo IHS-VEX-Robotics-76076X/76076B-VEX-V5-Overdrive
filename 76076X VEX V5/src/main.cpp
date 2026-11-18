@@ -236,7 +236,7 @@ void render_menu() {
 
 	switch (state.screen) {
 		case Screen::HOME: {
-			lcd_line(0, "76076X Overdrive");
+			lcd_line(0, "76076X Overdrive Version 1.00");
 			lcd_line(1, std::string("Match auton: ") + auton_name(state.selected));
 			lcd_line(2, AUTON_ENABLED ? "Auton: ENABLED"
 			                                     : "Auton: OFF (config.hpp)");
