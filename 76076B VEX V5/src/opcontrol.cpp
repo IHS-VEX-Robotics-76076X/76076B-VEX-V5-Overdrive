@@ -8,20 +8,24 @@
 #include "config.hpp"
 #include "util.hpp"
 #include "menu.hpp"
+#include "lift.hpp"
 
 #include <cstdio>
 #include <atomic>
+#include <cmath>
 
 // These all live in main.cpp - this is how we reach them from here.
 extern Chassis myRobot;
 extern pros::MotorGroup cascade_motors;
+extern pros::Motor cascade_motor_a; // CASCADE_MOTOR_PORTS[0]
+extern pros::Motor cascade_motor_b; // CASCADE_MOTOR_PORTS[1]
 extern pros::MotorGroup intake_motors;
 extern pros::adi::DigitalOut claw_piston;
 extern pros::adi::DigitalOut flip_piston;
 
 // Menu plumbing, defined in main.cpp.
 void menu_service();                 // reads the buttons, then redraws
-void set_lift_readout(double degrees); // live lift position for the home screen
+void set_lift_readout(double degrees, double gap); // live lift position + sync gap for the home screen
 void render_menu();                  // redraw only (used mid-routine)
 MenuState menu_snapshot();           // consistent read of the menu state
 void menu_clear_test_request();      // call once a requested route has run
@@ -40,20 +44,64 @@ void run_auton_routine(AutonRoutine routine);
 //
 // The routine blocks, so the sticks are dead until it finishes. That is why
 // the screen says "RUNNING - sticks off" while it does.
-static void service_test_request(const MenuState &state) {
-    if (!state.runTestNow) return;
+//
+// Returns true if a routine ran, so the caller knows the lift may have moved.
+static bool service_test_request(const MenuState &state) {
+    if (!state.runTestNow) return false;
 
     myRobot.stop();                  // don't inherit this loop's stick input
     render_menu();                   // show "RUNNING" before we block
     run_auton_routine(state.selected);
     myRobot.stop();                  // and don't leave it coasting
     menu_clear_test_request();
+    return true;
+}
+
+// Sends one loop's lift decision (lift.hpp) to the two motors.
+static void apply_lift(const lift::Command &cmd) {
+    switch (cmd.mode) {
+        case lift::Command::Mode::DRIVE:
+            // A speed each, not a shared voltage. Each motor's own speed
+            // controller then works as hard as its side needs to hold that
+            // speed, and the two targets carry the sync correction.
+            cascade_motor_a.move_velocity(static_cast<std::int32_t>(std::lround(cmd.rpm[0])));
+            cascade_motor_b.move_velocity(static_cast<std::int32_t>(std::lround(cmd.rpm[1])));
+            break;
+        case lift::Command::Mode::HOLD:
+            // One target for both, so they stop at the same height. Sent
+            // every loop, like the old top-of-travel hold: re-sending the same
+            // target doesn't restart the move, and a motor whose cable
+            // dropped out for a moment gets its target back.
+            cascade_motors.move_absolute(cmd.holdDeg, CASCADE_HOLD_RPM);
+            break;
+        case lift::Command::Mode::BRAKE:
+            // No encoder to hold a position with. brake() - unlike move(0) -
+            // does use the HOLD brake mode set in initialize().
+            cascade_motors.brake();
+            break;
+    }
 }
 
 void opcontrol() {
     pros::Controller master(pros::E_CONTROLLER_MASTER);
     int prevLeft = 0;
     int prevRight = 0;
+
+    // Keeps the two lift motors moving and stopping together - see lift.hpp.
+    // Created here, not as a global, so each run of driver control starts
+    // fresh and latches a hold point from wherever the lift is right now.
+    lift::Sync liftSync(lift::Settings{
+        .maxRpm = CASCADE_MAX_RPM,
+        .syncKp = CASCADE_SYNC_KP,
+        .syncMaxRpm = CASCADE_SYNC_MAX_RPM,
+        .syncDeadbandDeg = CASCADE_SYNC_DEADBAND_DEG,
+        .stopSettledRpm = CASCADE_STOP_SETTLED_RPM,
+        .stopTimeoutSeconds = CASCADE_STOP_TIMEOUT_MS / 1000.0,
+        .loopSeconds = OPCONTROL_LOOP_MS / 1000.0,
+        .limitEnabled = CASCADE_LIMIT_ENABLED,
+        .minDeg = CASCADE_MIN_DEG,
+        .maxDeg = CASCADE_MAX_DEG,
+    });
 
     while (true) {
         // Reads one joystick axis and cleans it up:
@@ -112,49 +160,43 @@ void opcontrol() {
         myRobot.drive(prevLeft, prevRight);
 
         // cascade lift: R1 up / R2 down. Holding both cancels out to 0, which
-        // is what we want. Both lift motors move together as one group.
+        // is what we want.
         int cascadeSpeed = 0;
         if (master.get_digital(E_CONTROLLER_DIGITAL_R1)) cascadeSpeed += 127;
         if (master.get_digital(E_CONTROLLER_DIGITAL_R2)) cascadeSpeed -= 127;
 
-        // Live lift position, for measuring the limits in config.hpp. Handed
-        // to the menu to draw rather than printed here: the home screen also
-        // owns line 5, so writing it directly meant the two fought over the
-        // same line every loop.
-        double liftDeg = cascade_motors.get_position();
-        set_lift_readout(liftDeg);
+        // Both encoders, + = up for each (PROS flips the reversed one's
+        // reading). The lift's height is their average.
+        const double liftA = cascade_motors.get_position(0);
+        const double liftB = cascade_motors.get_position(1);
+        const double liftDeg = lift::position(liftA, liftB);
 
+        // Live lift position and sync gap, for measuring the limits in
+        // config.hpp and checking the two sides agree. Handed to the menu to
+        // draw rather than printed here: the home screen also owns line 5,
+        // so writing it directly meant the two fought over the line.
+        set_lift_readout(liftDeg, liftA - liftB);
+
+        int allowed = cascadeSpeed;
         if constexpr (CASCADE_LIMIT_ENABLED) {
             // limitTravel fails open: if liftDeg isn't a finite number the
-            // speed passes straight through. The previous version compared
-            // directly, so a motor reporting PROS_ERR_F (infinity) - which
-            // is what an unplugged or unconfigured motor returns - made
-            // `liftDeg >= CASCADE_MAX_DEG` true and silently blocked raising
-            // for the rest of the match.
-            int allowed = util::limitTravel(cascadeSpeed, liftDeg,
-                                            CASCADE_MIN_DEG, CASCADE_MAX_DEG);
-
-            if (allowed == 0 && cascadeSpeed > 0) {
-                // At the top with the driver still asking for more. Hold the
-                // height rather than cutting power.
-                //
-                // Cutting to move(0) left the lift relying on brake mode to
-                // resist gravity, and a cascade is heavy enough to drag
-                // itself back down - so reaching the top dropped it to the
-                // bottom. move_absolute servos to CASCADE_MAX_DEG and keeps
-                // it there, which also walks the lift back up the few
-                // degrees it sags rather than letting the sag accumulate.
-                //
-                // Releasing R1, or pressing R2, falls through to the move()
-                // below - a voltage command cancels the position move, so
-                // the driver always gets control straight back.
-                cascade_motors.move_absolute(CASCADE_MAX_DEG, CASCADE_HOLD_RPM);
-            } else {
-                cascade_motors.move(allowed);
-            }
-        } else {
-            cascade_motors.move(cascadeSpeed);
+            // speed passes straight through. Comparing directly used to let
+            // an unplugged motor's PROS_ERR_F (infinity) count as "past the
+            // top" and silently block raising for the rest of the match.
+            //
+            // A blocked direction comes back as 0. liftSync is told it was a
+            // limit (atLimit below), so it holds at once, clamped to the
+            // limits: pressing R1 at the top holds the lift at
+            // CASCADE_MAX_DEG instead of cutting power and letting it drop.
+            allowed = util::limitTravel(cascadeSpeed, liftDeg,
+                                        CASCADE_MIN_DEG, CASCADE_MAX_DEG);
         }
+        const bool atLimit = cascadeSpeed != 0 && allowed == 0;
+
+        // Moving: each motor gets its own speed, nudged so the two sides
+        // stay level. Released: both brake together, then hold one shared
+        // point, so neither coasts on after the other. See lift.hpp.
+        apply_lift(liftSync.update(allowed, liftA, liftB, atLimit));
 
         // intake: X in / B out (reverse clears jams and fixes cup orientation
         // for SC3 - opaque vs transparent matters for yellow scoring).
@@ -166,7 +208,11 @@ void opcontrol() {
         // Draw the menu and run anything it asked for. After the drive and
         // mechanism commands, so a test routine starts from a stopped robot
         // rather than inheriting this loop's stick values.
-        service_test_request(menu_snapshot());
+        if (service_test_request(menu_snapshot())) {
+            // The routine may have moved the lift. Re-latch the hold point
+            // from where it is now instead of dragging it back.
+            liftSync.reset();
+        }
         menu_service();
 
         // claw: A toggles open/closed. new_press (not get_digital) so holding
@@ -184,6 +230,6 @@ void opcontrol() {
             flip_piston.set_value(flipOut);
         }
 
-        pros::delay(20);
+        pros::delay(OPCONTROL_LOOP_MS);
     }
 }

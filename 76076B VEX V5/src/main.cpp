@@ -53,6 +53,16 @@ pros::MotorGroup cascade_motors(
     std::vector<std::int8_t>(CASCADE_MOTOR_PORTS.begin(), CASCADE_MOTOR_PORTS.end()),
     CASCADE_MOTOR_GEARSET);
 
+// The same two lift motors, one handle each. The group above can only send
+// both motors the SAME command, but keeping them in sync means nudging one a
+// little faster and the other a little slower (see lift.hpp), so driving
+// commands go through these. Same ports and signs as the group, so "+ = up"
+// holds for both.
+pros::Motor cascade_motor_a(CASCADE_MOTOR_PORTS[0], CASCADE_MOTOR_GEARSET);
+pros::Motor cascade_motor_b(CASCADE_MOTOR_PORTS[1], CASCADE_MOTOR_GEARSET);
+static_assert(CASCADE_MOTOR_PORTS.size() == 2,
+    "The cascade sync drives exactly two motors - update cascade_motor_a/b and lift.hpp if that changes.");
+
 // Intake: two motors driven as one group so they can never get out of step.
 pros::MotorGroup intake_motors(
     std::vector<std::int8_t>(INTAKE_MOTOR_PORTS.begin(), INTAKE_MOTOR_PORTS.end()),
@@ -221,8 +231,12 @@ static void lcd_line(int line, const std::string &text) {
 // render_menu() wrote its own line 5 - so the two fought every single loop
 // and the line flickered between them.
 static std::atomic<double> lift_readout_deg{0.0};
+static std::atomic<double> lift_readout_gap{0.0}; // first cascade motor minus second, degrees
 
-void set_lift_readout(double degrees) { lift_readout_deg = degrees; }
+void set_lift_readout(double degrees, double gap) {
+	lift_readout_deg = degrees;
+	lift_readout_gap = gap;
+}
 
 void render_menu();
 
@@ -246,8 +260,13 @@ void render_menu() {
 			{
 				// Rounded to a whole degree so the text only changes when
 				// the lift genuinely moves, rather than every tick.
-				char lift[32];
-				std::snprintf(lift, sizeof(lift), "Lift: %.0f deg", lift_readout_deg.load());
+				// "gap" is how far apart the two lift motors' encoders are.
+				// It should sit within a few degrees of 0 - a gap that keeps
+				// growing means the two sides are out of sync (see
+				// CASCADE_SYNC_KP in config.hpp).
+				char lift[48];
+				std::snprintf(lift, sizeof(lift), "Lift: %.0f deg  gap: %.0f",
+				              lift_readout_deg.load(), lift_readout_gap.load());
 				lcd_line(5, lift);
 			}
 			lcd_line(6, "L=pick auton  M=test");
@@ -361,10 +380,12 @@ void initialize() {
 	// No register_btnX_cb() calls here on purpose - the buttons are polled
 	// in menu_service() instead. See poll_menu_buttons() for why.
 
-	// The lift must hold position against gravity when stopped, so it uses
-	// HOLD - that's what lets you pause it partway up and have it stay there
-	// instead of sinking. The intake has nothing to hold up and just needs
-	// to stop cleanly, so BRAKE is enough.
+	// The lift is held up in driver control by sending both motors to a
+	// shared position (lift.hpp), not by the brake mode - move(0) never used
+	// the brake mode at all. HOLD is still set as the backstop for when
+	// neither lift encoder is answering and opcontrol falls back to brake().
+	// The intake has nothing to hold up and just needs to stop cleanly, so
+	// BRAKE is enough.
 	cascade_motors.set_brake_mode_all(E_MOTOR_BRAKE_HOLD);
 	intake_motors.set_brake_mode_all(E_MOTOR_BRAKE_BRAKE);
 

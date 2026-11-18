@@ -130,7 +130,10 @@ PID_TEST_BIN := $(BINDIR)/host_test_pid
 MENU_TEST_SRC := src/menu.cpp tests/test_menu.cpp
 MENU_TEST_BIN := $(BINDIR)/host_test_menu
 
-HOST_TEST_BINS := $(CHASSIS_TEST_BIN) $(UTIL_TEST_BIN) $(PID_TEST_BIN) $(MENU_TEST_BIN)
+LIFT_TEST_SRC := src/lift.cpp tests/test_lift.cpp
+LIFT_TEST_BIN := $(BINDIR)/host_test_lift
+
+HOST_TEST_BINS := $(CHASSIS_TEST_BIN) $(UTIL_TEST_BIN) $(PID_TEST_BIN) $(MENU_TEST_BIN) $(LIFT_TEST_BIN)
 
 .DEFAULT_GOAL=host-test
 
@@ -153,6 +156,10 @@ $(PID_TEST_BIN): $(PID_TEST_SRC)
 $(MENU_TEST_BIN): $(MENU_TEST_SRC)
 	@mkdir -p $(dir $(MENU_TEST_BIN))
 	$(HOST_CXX) $(HOST_CXXFLAGS) -o $@ $(MENU_TEST_SRC)
+
+$(LIFT_TEST_BIN): $(LIFT_TEST_SRC) include/lift.hpp
+	@mkdir -p $(dir $(LIFT_TEST_BIN))
+	$(HOST_CXX) $(HOST_CXXFLAGS) -o $@ $(LIFT_TEST_SRC)
 
 clean:
 	rm -f $(HOST_TEST_BINS)

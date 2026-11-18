@@ -77,6 +77,14 @@ constexpr double ticks_per_rev_for(pros::v5::MotorGears gearset) {
          :                                           300.0;  // 600 RPM (blue)
 }
 
+// Top speed from the cartridge color, for anything driven by move_velocity()
+// - asking for more than the cartridge can do just pins the motor at full.
+constexpr double max_rpm_for(pros::v5::MotorGears gearset) {
+    return gearset == pros::v5::MotorGears::red   ? 100.0
+         : gearset == pros::v5::MotorGears::green ? 200.0
+         :                                          600.0;  // blue
+}
+
 // ---------------------------------------------------------------------------
 // DRIVETRAIN GEOMETRY
 // ---------------------------------------------------------------------------
@@ -300,6 +308,10 @@ constexpr double STALL_DRIVE_PROGRESS_TICKS = 10.0; // min encoder ticks conside
 constexpr double STALL_TURN_PROGRESS_DEG = 1.0;     // min degrees considered progress
 constexpr double STALL_MIN_OUTPUT = 20.0;           // ignore stall when barely commanding power
 
+// How long one driver-control loop waits before running again. The lift
+// sync uses it to turn "how far a motor turned since last loop" into a speed.
+constexpr int OPCONTROL_LOOP_MS = 20;
+
 // Opcontrol shaping: slew limits jerk with tall stacks (tip/descore risk),
 // expo gives fine control near center for goal alignment.
 constexpr int OPCONTROL_SLEW_PER_LOOP = 10; // max speed-up per 20ms loop (slowing down is instant)
@@ -319,7 +331,7 @@ constexpr double DRIVE_MAX_ACCEL_PER_LOOP = 15.0;
 // ---------------------------------------------------------------------------
 //
 // Stops the lift driving past a bottom and top position. Values are motor
-// degrees, read from the first cascade motor (port 5).
+// degrees: the average of the two cascade motors' encoders (see lift.hpp).
 //
 // initialize() zeroes the lift encoders at startup, so 0 means "wherever the
 // lift was when the program started". START THE PROGRAM WITH THE LIFT ALL
@@ -347,17 +359,67 @@ constexpr bool CASCADE_LIMIT_ENABLED = false;
 constexpr double CASCADE_MIN_DEG = 0.0;
 constexpr double CASCADE_MAX_DEG = 10000.0; // TODO: placeholder - measure it (see steps above)
 
-// How hard the lift servos back to the top once it has hit the limit, in
-// RPM. Only used while the driver is still asking to go up at the top.
+// Top speed of the lift motors, from their cartridge (200 RPM for green).
+// Full R1/R2 asks for this speed.
+constexpr double CASCADE_MAX_RPM = max_rpm_for(CASCADE_MOTOR_GEARSET);
+
+// How fast the lift may move while it settles onto its hold point, in RPM.
+// Used every time the lift stops - when R1/R2 is released, or at a limit.
 //
-// Cutting power at the limit is not enough on this lift: a stopped motor
-// relies on brake mode to resist gravity, and a cascade is heavy enough to
-// drag it back down. Holding the position actively keeps it where it is.
+// Cutting power is not enough on this lift: move(0) is just 0 volts, which
+// ignores the brake mode, so the motors coast and gravity drags the lift
+// down. Holding a position actively keeps it where it is.
 //
-// Low on purpose. This only has to resist gravity over a few degrees of
-// sag, not drive the lift anywhere, and a high value turns a small sag into
-// a jolt back upward.
+// Low on purpose. By the time the hold takes over the lift has already
+// braked to a stop, so this only has to correct a few degrees of sag, not
+// drive it anywhere - and a high value turns a small sag into a jolt.
 constexpr int CASCADE_HOLD_RPM = 50;
+
+// ---------------------------------------------------------------------------
+// CASCADE MOTOR SYNC (see lift.hpp)
+// ---------------------------------------------------------------------------
+//
+// While the lift is moving, the two cascade encoders are compared every
+// loop. If one side gets ahead it is slowed down, and the other sped up,
+// until they agree again.
+//
+// Correction per degree of disagreement (beyond the deadband below), in
+// RPM. 0.75 means a 10 degree gap slows the leading motor by 7.5 RPM and
+// speeds the trailing one by 7.5 RPM, closing about a fifth of the gap
+// every 20ms loop.
+//
+// Chosen in simulation (tests/test_lift.cpp): 1.0 started to overshoot back
+// and forth once motor lag was added, and 0.5 was too slow to pull a
+// lagging side back level.
+//
+// IF THE LIFT JUDDERS OR THE TWO MOTORS SOUND LIKE THEY ARE FIGHTING while
+// it moves, lower this (0.5). If the sides still drift apart, raise it in
+// small steps (1.0, 1.25). Brain line 5 shows the live gap between the two
+// encoders as "gap", in degrees - it should sit within a few of 0.
+constexpr double CASCADE_SYNC_KP = 0.75;
+
+// The most correction one motor ever gets, in RPM (20% of green's 200).
+constexpr double CASCADE_SYNC_MAX_RPM = 40.0;
+
+// Gaps smaller than this many degrees are left alone: gears and chain have
+// a little slop, and correcting it would make the motors fight for nothing.
+constexpr double CASCADE_SYNC_DEADBAND_DEG = 3.0;
+
+// When R1/R2 is released, both motors brake to zero speed with the sync
+// still on, so one can't stop early and leave the other running on. A motor
+// counts as stopped below this speed (RPM); once both have stopped, the lift
+// locks onto one shared hold point.
+constexpr double CASCADE_STOP_SETTLED_RPM = 10.0;
+
+// Lock onto the hold point after this long braking regardless, so the
+// position hold always takes over (e.g. if the lift is sliding under its own
+// weight and never reads as stopped).
+constexpr int CASCADE_STOP_TIMEOUT_MS = 500;
+
+static_assert(CASCADE_SYNC_KP >= 0.0 && CASCADE_SYNC_MAX_RPM >= 0.0 && CASCADE_SYNC_DEADBAND_DEG >= 0.0,
+    "Cascade sync settings must not be negative - a negative gain pushes the two sides further apart.");
+static_assert(CASCADE_SYNC_MAX_RPM < CASCADE_MAX_RPM,
+    "CASCADE_SYNC_MAX_RPM must be below the lift's top speed, or a correction could stop one side entirely.");
 
 static_assert(!CASCADE_LIMIT_ENABLED || CASCADE_MIN_DEG < CASCADE_MAX_DEG,
     "CASCADE_MIN_DEG must be below CASCADE_MAX_DEG - measure the top position before enabling the limit.");

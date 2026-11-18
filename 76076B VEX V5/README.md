@@ -327,6 +327,11 @@ Bindings live in `src/opcontrol.cpp`.
 
 - The lift holds its position wherever you let go - it doesn't sag. Holding
   R1 and R2 together cancels out to no movement.
+- The two lift motors (ports 5 and 6) are kept in sync: they run at the same
+  speed, brake together when you let go, and hold one shared height. The
+  brain's home screen shows `gap:`, how many degrees apart the two motors
+  are - it should stay within a few of 0. Tuning is in `config.hpp` under
+  CASCADE MOTOR SYNC, and how it works is explained in `include/lift.hpp`.
 - If X and B are both held, X wins and the intake runs in.
 - Both pistons start retracted. A and Y flip once per press, so holding the
   button doesn't toggle it repeatedly.
