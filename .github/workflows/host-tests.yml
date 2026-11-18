@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: 76076X VEX V5
+        working-directory: 76076B VEX V5
     steps:
       - uses: actions/checkout@v4
 
