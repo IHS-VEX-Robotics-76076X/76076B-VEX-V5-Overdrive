@@ -343,7 +343,7 @@ constexpr double DRIVE_MAX_ACCEL_PER_LOOP = 15.0;
 // go - and either way you can't tell which without measuring.
 //
 // Follow the four steps above, then set this to true.
-constexpr bool CASCADE_LIMIT_ENABLED = false;
+constexpr bool CASCADE_LIMIT_ENABLED = true;
 constexpr double CASCADE_MIN_DEG = 0.0;
 constexpr double CASCADE_MAX_DEG = 10000.0; // TODO: placeholder - measure it (see steps above)
 
